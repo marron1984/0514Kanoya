@@ -1,9 +1,9 @@
-"""Compose the 1080x1920 vertical Instagram Reel for Hotel KANUYA.
+"""Compose the 1080x1920 vertical Instagram Reel for 奈良春日 鹿のや＜KANOYA＞.
 
 Aesthetic: "絵画を飾ったような窓の外の景色" — let the photos breathe.
 Each photo keeps its native aspect on a softly-blurred bed of itself,
-shadows are lifted so the rooms read clearly, and only two understated
-KANUYA wordmarks bookend the spot — opener + closer.
+shadows are lifted hard so the rooms read clearly, and only two
+understated wordmarks (奈良春日　鹿のや / KANOYA) bookend the spot.
 """
 from __future__ import annotations
 
@@ -35,43 +35,37 @@ SCENES = [
         "img": "7C1A4171.JPG",
         "dur": 4.0,
         "kb": (1.00, 1.06, 0.0, -0.01),
-        "caption": "KANUYA",
-        "caption_sub": None,
+        "brand_jp": "奈良春日　鹿のや",
+        "brand_en": "KANOYA",
+        "tagline": None,
     },
     {
         "img": "7C1A4172.JPG",
         "dur": 3.6,
         "kb": (1.05, 1.00, 0.0, 0.01),
-        "caption": None,
-        "caption_sub": None,
     },
     {
         "img": "7C1A4173.JPG",
         "dur": 3.6,
         "kb": (1.06, 1.00, -0.01, 0.0),
-        "caption": None,
-        "caption_sub": None,
     },
     {
         "img": "7C1A4184.JPG",
         "dur": 3.6,
         "kb": (1.00, 1.06, 0.0, -0.01),
-        "caption": None,
-        "caption_sub": None,
     },
     {
         "img": "7C1A4182.JPG",
         "dur": 3.8,
         "kb": (1.06, 1.00, 0.01, 0.0),
-        "caption": None,
-        "caption_sub": None,
     },
     {
         "img": "7C1A4174.JPG",
         "dur": 3.6,
         "kb": (1.00, 1.05, -0.01, -0.01),
-        "caption": "KANUYA",
-        "caption_sub": "窓のむこうに、初夏。",
+        "brand_jp": "奈良春日　鹿のや",
+        "brand_en": "KANOYA",
+        "tagline": "窓のむこうに、初夏。",
     },
 ]
 TOTAL = sum(s["dur"] for s in SCENES)
@@ -108,12 +102,13 @@ def lift_shadows(arr: np.ndarray) -> np.ndarray:
     a multiplicative boost would clip the highlights. A gamma < 1 lifts
     the midtones / shadows while leaving the brightest pixels alone.
 
-    This pass is more aggressive than before — the rooms now read clearly
-    while the window highlights still hold (clipped at 1.0 anyway).
+    This pass goes further than the previous version — the dark interior
+    walls/floors now sit comfortably in mid-tones, while the bright
+    window foliage still carries detail (clipped only at 1.0).
     """
-    arr = np.power(arr, 0.62)            # stronger shadow lift
-    arr = (arr - 0.5) * 0.94 + 0.56      # softer contrast, brighter midpoint
-    arr = arr + 0.04                     # global lift
+    arr = np.power(arr, 0.55)            # aggressive shadow lift
+    arr = (arr - 0.5) * 0.88 + 0.58      # gentler contrast, brighter midpoint
+    arr = arr + 0.06                     # global lift
     # gallery-light warmth
     warm = np.array([[[+0.014, +0.007, -0.007]]], dtype=np.float32)
     arr = arr + warm
@@ -165,9 +160,9 @@ def build_blur_bg(base_full: Image.Image) -> Image.Image:
     bg = bg.crop((bx, by, bx + W, by + H))
     bg = bg.filter(ImageFilter.GaussianBlur(60))
     arr = np.asarray(bg).astype(np.float32) / 255.0
-    # noticeably brighter and lower contrast so it does not compete with FG
-    arr = np.power(arr, 0.50)
-    arr = (arr - 0.5) * 0.45 + 0.62
+    # very bright and low-contrast so the bands feel like soft daylight
+    arr = np.power(arr, 0.42)
+    arr = (arr - 0.5) * 0.38 + 0.68
     arr = np.clip(arr, 0, 1)
     return Image.fromarray((arr * 255).astype(np.uint8))
 
@@ -190,11 +185,14 @@ def text_with_shadow(canvas, xy, text, font, fill=(255, 255, 255), alpha=1.0, an
 
 
 def caption_layer(
-    scene_t: float, scene_dur: float, text: str | None, sub: str | None = None,
+    scene_t: float, scene_dur: float,
+    brand_jp: str | None = None,
+    brand_en: str | None = None,
+    tagline: str | None = None,
 ) -> Image.Image:
-    """An understated KANUYA wordmark + optional subtitle. Fades in/out softly."""
+    """Three-tier KANOYA wordmark: tagline / 鹿のや / KANOYA. Fades softly."""
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if not text:
+    if not (brand_jp or brand_en or tagline):
         return layer
 
     fade_in_t = 0.6
@@ -207,19 +205,32 @@ def caption_layer(
         a = 1.0
     a = smoothstep(a)
 
-    # KANUYA wordmark — wide letter spacing for a refined hotel feel
-    spaced = "  ".join(list(text))
-    main_font = ImageFont.truetype(FONT_BOLD, 60)
-    cy = int(H * 0.88)
-    text_with_shadow(
-        layer, (W // 2, cy), spaced, main_font,
-        fill=(252, 248, 235), alpha=a, anchor="mm",
-    )
-    if sub:
-        sub_font = ImageFont.truetype(FONT_BOLD, 36)
+    # Layout (anchored toward the bottom):
+    #   tagline      → small, above
+    #   brand_jp     → main, "奈良春日　鹿のや"
+    #   brand_en     → spaced KANOYA underneath
+    cy_en = int(H * 0.92)
+    cy_jp = cy_en - 78
+    cy_tag = cy_jp - 86
+
+    if brand_en:
+        en_font = ImageFont.truetype(FONT_BOLD, 36)
+        spaced_en = "  ".join(list(brand_en))
         text_with_shadow(
-            layer, (W // 2, cy - 80), sub, sub_font,
-            fill=(238, 232, 216), alpha=a * 0.92, anchor="mm",
+            layer, (W // 2, cy_en), spaced_en, en_font,
+            fill=(252, 248, 235), alpha=a * 0.95, anchor="mm",
+        )
+    if brand_jp:
+        jp_font = ImageFont.truetype(FONT_BOLD, 56)
+        text_with_shadow(
+            layer, (W // 2, cy_jp), brand_jp, jp_font,
+            fill=(252, 248, 235), alpha=a, anchor="mm",
+        )
+    if tagline:
+        tag_font = ImageFont.truetype(FONT_BOLD, 36)
+        text_with_shadow(
+            layer, (W // 2, cy_tag), tagline, tag_font,
+            fill=(238, 232, 216), alpha=a * 0.88, anchor="mm",
         )
     return layer
 
@@ -272,7 +283,9 @@ def build_frames() -> Path:
 
             cap = caption_layer(
                 scene_t, scene["dur"],
-                scene.get("caption"), scene.get("caption_sub"),
+                brand_jp=scene.get("brand_jp"),
+                brand_en=scene.get("brand_en"),
+                tagline=scene.get("tagline"),
             )
             f.alpha_composite(cap)
 

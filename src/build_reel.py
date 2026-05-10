@@ -1,9 +1,9 @@
-"""Compose the 1080x1920 vertical Instagram Reel.
+"""Compose the 1080x1920 vertical Instagram Reel for Hotel KANUYA.
 
 Aesthetic: "絵画を飾ったような窓の外の景色" — let the photos breathe.
-We keep each photo's original aspect (no destructive crop), float it on a
-softly-blurred bed of itself, lift the shadows so the rooms read clearly,
-and use very little text — only an opener and a closer.
+Each photo keeps its native aspect on a softly-blurred bed of itself,
+shadows are lifted so the rooms read clearly, and only two understated
+KANUYA wordmarks bookend the spot — opener + closer.
 """
 from __future__ import annotations
 
@@ -35,37 +35,43 @@ SCENES = [
         "img": "7C1A4171.JPG",
         "dur": 4.0,
         "kb": (1.00, 1.06, 0.0, -0.01),
-        "caption": "5月｜月替わりコース",
+        "caption": "KANUYA",
+        "caption_sub": None,
     },
     {
         "img": "7C1A4172.JPG",
         "dur": 3.6,
         "kb": (1.05, 1.00, 0.0, 0.01),
         "caption": None,
+        "caption_sub": None,
     },
     {
         "img": "7C1A4173.JPG",
         "dur": 3.6,
         "kb": (1.06, 1.00, -0.01, 0.0),
         "caption": None,
+        "caption_sub": None,
     },
     {
         "img": "7C1A4184.JPG",
         "dur": 3.6,
         "kb": (1.00, 1.06, 0.0, -0.01),
         "caption": None,
+        "caption_sub": None,
     },
     {
         "img": "7C1A4182.JPG",
         "dur": 3.8,
         "kb": (1.06, 1.00, 0.01, 0.0),
         "caption": None,
+        "caption_sub": None,
     },
     {
         "img": "7C1A4174.JPG",
-        "dur": 3.4,
+        "dur": 3.6,
         "kb": (1.00, 1.05, -0.01, -0.01),
-        "caption": "旬の鮮魚を、確かな腕で。",
+        "caption": "KANUYA",
+        "caption_sub": "窓のむこうに、初夏。",
     },
 ]
 TOTAL = sum(s["dur"] for s in SCENES)
@@ -101,11 +107,15 @@ def lift_shadows(arr: np.ndarray) -> np.ndarray:
     Source photos are intentionally moody (dark room, bright window) so
     a multiplicative boost would clip the highlights. A gamma < 1 lifts
     the midtones / shadows while leaving the brightest pixels alone.
+
+    This pass is more aggressive than before — the rooms now read clearly
+    while the window highlights still hold (clipped at 1.0 anyway).
     """
-    arr = np.power(arr, 0.78)            # lift shadows
-    arr = (arr - 0.5) * 1.04 + 0.52      # tiny contrast + small offset
-    # very mild warm tone (gallery-light feel)
-    warm = np.array([[[+0.012, +0.006, -0.006]]], dtype=np.float32)
+    arr = np.power(arr, 0.62)            # stronger shadow lift
+    arr = (arr - 0.5) * 0.94 + 0.56      # softer contrast, brighter midpoint
+    arr = arr + 0.04                     # global lift
+    # gallery-light warmth
+    warm = np.array([[[+0.014, +0.007, -0.007]]], dtype=np.float32)
     arr = arr + warm
     return np.clip(arr, 0.0, 1.0)
 
@@ -156,8 +166,8 @@ def build_blur_bg(base_full: Image.Image) -> Image.Image:
     bg = bg.filter(ImageFilter.GaussianBlur(60))
     arr = np.asarray(bg).astype(np.float32) / 255.0
     # noticeably brighter and lower contrast so it does not compete with FG
-    arr = np.power(arr, 0.62)
-    arr = (arr - 0.5) * 0.55 + 0.55
+    arr = np.power(arr, 0.50)
+    arr = (arr - 0.5) * 0.45 + 0.62
     arr = np.clip(arr, 0, 1)
     return Image.fromarray((arr * 255).astype(np.uint8))
 
@@ -179,8 +189,10 @@ def text_with_shadow(canvas, xy, text, font, fill=(255, 255, 255), alpha=1.0, an
     canvas.alpha_composite(layer)
 
 
-def caption_layer(scene_t: float, scene_dur: float, text: str | None) -> Image.Image:
-    """A single, quiet line of text. Fades in/out softly."""
+def caption_layer(
+    scene_t: float, scene_dur: float, text: str | None, sub: str | None = None,
+) -> Image.Image:
+    """An understated KANUYA wordmark + optional subtitle. Fades in/out softly."""
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if not text:
         return layer
@@ -195,12 +207,20 @@ def caption_layer(scene_t: float, scene_dur: float, text: str | None) -> Image.I
         a = 1.0
     a = smoothstep(a)
 
-    font = ImageFont.truetype(FONT_BOLD, 70)
-    cy = int(H * 0.86)
+    # KANUYA wordmark — wide letter spacing for a refined hotel feel
+    spaced = "  ".join(list(text))
+    main_font = ImageFont.truetype(FONT_BOLD, 60)
+    cy = int(H * 0.88)
     text_with_shadow(
-        layer, (W // 2, cy), text, font,
+        layer, (W // 2, cy), spaced, main_font,
         fill=(252, 248, 235), alpha=a, anchor="mm",
     )
+    if sub:
+        sub_font = ImageFont.truetype(FONT_BOLD, 36)
+        text_with_shadow(
+            layer, (W // 2, cy - 80), sub, sub_font,
+            fill=(238, 232, 216), alpha=a * 0.92, anchor="mm",
+        )
     return layer
 
 
@@ -250,7 +270,10 @@ def build_frames() -> Path:
             arr = (arr * 255.0).astype(np.uint8)
             f = Image.fromarray(arr).convert("RGBA")
 
-            cap = caption_layer(scene_t, scene["dur"], scene.get("caption"))
+            cap = caption_layer(
+                scene_t, scene["dur"],
+                scene.get("caption"), scene.get("caption_sub"),
+            )
             f.alpha_composite(cap)
 
             f = f.convert("RGB")

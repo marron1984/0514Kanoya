@@ -298,12 +298,16 @@ def build_frames() -> Path:
 
 def encode_video(frames_dir: Path) -> Path:
     out = OUTPUT / "kanoya_may_course_reel.mp4"
-    music = OUTPUT / "music.wav"
+    # BGM: repository-provided MP3, faded to match video length.
+    music = ASSETS / "Tea_Leaves_and_Ink.mp3"
+    fade_out = 1.5  # seconds
+    afilter = f"afade=t=in:st=0:d=0.6,afade=t=out:st={TOTAL - fade_out:.2f}:d={fade_out}"
     cmd = [
         "ffmpeg", "-y",
         "-framerate", str(FPS),
         "-i", str(frames_dir / "f_%05d.jpg"),
         "-i", str(music),
+        "-af", afilter,
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "medium",
